@@ -1,0 +1,236 @@
+---
+title: "Diversity and Inclusion Overview"
+author: "Philippe J.S. De Brouwer"
+date: "18/09/2021"
+abstract: "This document offers an extract of the capabilities of the software library {div}  focused at creating insight in the data at highest level (comparing teams or business divisions) -- details and other (more actinable insight) are in other reports. This report can also be used to get a feeling of what level of diversity is realistic to achieve without forcing it (i.e. by honestly promoting the best suited person)."
+output: 
+  pdf_document: 
+    toc: yes
+    number_sections: yes
+    keep_tex: yes
+    extra_dependencies: ["float"]
+    includes:
+      in_header: preamble.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo    = FALSE)
+#knitr::opts_chunk$set(include = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.pos = "!h", out.extra = "")
+
+library(div)
+library(ggthemes)
+library(knitr)
+library(kableExtra)
+```
+
+# The Team
+
+This analysis is based on computer generated data and is not based on any real team of any company. For the purpose of this report the following built-in biases and assumptions are used:
+
+```{r initR}
+seed = 1928
+N <- 750
+genders = c("F", "M", "O")
+gender_prob = c(0.4, 0.58, 0.02)
+gender_salaryBias <- c(1, 1.1, 1)
+jobIDs <- c("sales", "analytics")
+jobID_prob = c(0.6, 0.4)
+citizenships = c("Polish", "German", "Italian", "Indian", "Other")
+citizenship_prob = c(0.6, 0.2, 0.1, 0.05, 0.05);
+```
+
+ * Seed for the random generator in R (statistical software): `r seed`
+ * Total number of staff: `r N`
+ * Gender categories used: `r genders`
+ * Prior probabilities of those genders: `r gender_prob`
+ * Respective salary bias built in for those genders: `r gender_salaryBias`
+ * Types of roles used: `r jobIDs`
+ * Probabilities for those roles: `r jobID_prob`
+ * Citizenships used: `r citizenships`
+ * Probabilities for those citizenships: `r citizenship_prob`
+ * Grades (``career bands'') are numeric and we use the logic that the higher the number is the higher one is in the ranks of the company.
+
+
+```{r initTeam}
+d <- div_fake_team(seed = seed,
+                   N = N,
+                   genders = genders,
+                   gender_prob = gender_prob,
+                   gender_salaryBias = gender_salaryBias,
+                   jobIDs = jobIDs,
+                   jobID_prob = jobID_prob,
+                   citizenships = citizenships,
+                   citizenship_prob = citizenship_prob
+                   )
+```
+
+
+```{r}
+div_table(d) # print the overview of the generated data
+```
+
+The result of those choices is shown in Table 1. For example the numbers of ladies and men is different as well are their median salaries for the same grade. Note that while the data is generated with different categories of jobs, those have not been presented here.
+
+# Diversity
+
+## Gender Diversity
+
+Diversity is measured as entropy. This is approach is:
+
+ * inclusive: it does not assume a binary classification, more classes are possible
+ * increases belonging: it does not force us to focus on one group only (e.g. percentage of women)
+ * helps a true reflection of diversity linked to probabilities: there is no sharp cut-off at a certain percentage (e.g. 50\%), but a smooth evolution that does not penalise small --random-- changes around an ideal distribution.
+
+```{r divGender, fig.cap="The diversity index per team (an index equal to one is an ideal reflection of the population. Note how for the smaller teams the index drops, while *in reality there is not more bias*. The bias built in for *all* teams is the same, only their size differs.\\label{fig:divGender}"}
+#tbl_gender_div <- table(d$gender, d$grade) %>%
+# apply(2, diversity, prior = c(50.2, 49.8)) %>%
+# tibble(value = ., label = paste("Grade", names(.)))
+
+
+x <- d %>%
+  group_by(team, gender, grade) %>%
+  summarise(n()) %>%
+  spread(gender, `n()`) %>%
+  mutate_if(is.numeric, replace_na, replace = 0) %>%
+  rowwise() %>%
+  mutate(diversity = diversity(c(`M`, `F`, `O`), prior = gender_prob),
+         N = `M` + `F` + `O`
+         )
+
+#boxplot(x$diversity ~ x$team)
+ggplot(data = x, mapping = aes(x = grade, y = diversity, colour = team)) + 
+  geom_hline(yintercept = 1,    color = "green", size = 20, alpha = 0.1) +
+  geom_hline(yintercept = 0.6,  color = "orange", size = 275, alpha = 0.1) +
+  geom_hline(yintercept = 0,  color = "red", size = 50, alpha = 0.1) +
+  geom_point(aes(size = N), alpha = 0.6) + 
+  geom_line(aes(x = grade, y = diversity), alpha = 0.6) + 
+  ggtitle("The Gender Diversity") +
+  theme_wsj(title_family = "serif")+ scale_colour_wsj("colors6") +
+  #theme_wsj(color = "gray", title_family = "serif")+ scale_colour_wsj("colors6")
+  #theme_economist() + scale_color_economist()
+  #theme_stata() + scale_color_stata()
+  #theme(plot.title = element_text(size = 16))
+  theme(text = element_text(size = 10)) +
+  theme(legend.text = element_text(size = 9)) 
+
+```
+
+The results of this diversity are presented in Figure \ref{fig:divGender}. It makes very clear that smaller teams should not be expected to have a near-perfect split. Larger teams (even with the same bias built in) have an easier time to be more diversified.
+
+In general, one can observe the bias here that had been built in in the data. While all teams had the same innate bias, it is not everywhere as clear.
+
+## Other Diversity Measures
+
+While we can measure other diversity measures than gender, it is much harder to have a realistic benchmark. So, while we can calculate them and present in other reports, we will not do so here. 
+
+# Inclusion via Pay Fairness
+
+In this sections we will investigate how much one group earns relative to the other group. To do this we choose one category (e.g. women, citizens of one country, half the group of relatively younger people, etc.) and compare the salaries of the others. This comparison is done via a pay-ratio: we dive de median of the selected group with the median in the remaining staff. So, if we select for example women, and the pay-ratio is 0.9, that means that on average ladies earn 10\% less than the other genders.
+
+To compare those numbers, we will use the median per team over all job categories where we can calculate such pay-ratio. While this doesn't tell us much about outliers, it gives a fairly good impression of the general tendency in the team.
+
+\mybox{Pay-Ratio}{yellow!40}{brown!10}{Pay-ratios are the quotient of the median of the salaries of the control group, divided by the median salaries of all others for a given career grade and job.
+\[ \text{pay-ratio} = \frac{\text{median salary control group}}{\text{median salary all others}}  \]}
+
+
+
+## Pay Fairness for Gender
+```{r}
+tmp <- gender_salaryBias[1] / gender_salaryBias[2]
+ratioPay <- formatC(tmp, digits = 2)
+```
+Note that when the data was generated, that we did build in a bias: men earn more than women in this data. So, we expect most pay-ratios to be below $1$. A pay-ratio around `r ratioPay` is to be expected.^[This is not exact `r ratioPay`, since we use a third gender. However, since the third gender has a lower probability (in our example) we should expect outcomes slightly above `r ratioPay`]
+
+```{r pfairnes, fig.cap="The pay-ratios per grade for each team. Note that for the smaller teams not all pay-ratios can be calculated and that for smaller teams larger deviations are possible. Finally, refer to the gender pay-bias that was built into the the data. $n\\_crl$ is the number of staff in the control group (ladies in this case)."}
+pg_gender <- div_paygap(d, team_sel = "*")
+
+x <- pg_gender$data %>%
+  group_by(team, grade) %>%
+  mutate(med_paygap = median(paygap)
+         )
+ggplot(data = x, mapping = aes(x = grade, y = med_paygap, colour = team)) + 
+  geom_hline(yintercept = 1,  color = "green", size = 50, alpha = 0.1) +
+  geom_point(aes(size = n_ctrl), alpha = 0.6) + 
+  geom_line(aes(x = grade, y = med_paygap), alpha = 0.6) + 
+  theme_wsj(title_family = "serif")+ scale_colour_wsj("colors6")  +
+  ggtitle("The Pay-Ratios per Gender") +
+  theme(text = element_text(size = 10)) +
+  theme(legend.text = element_text(size = 9)) 
+```
+
+## Pay Fairness for Citizenship
+
+Note that the generated data has no built-in bias with respect to nationality. However, the data is generated randomly and so, we will see certain deviations around a pay-ratio of $1$. These variations are random and hence not due to bias.
+
+```{r, fig.cap = "The pay-ratios for grade per team for citizenship. Note that because there was no bias built in most numbers gravitate around 1, but deviations are possible. $n\\_crl$ is the number of staff in the control group (Polish citizens)"}
+pg_citizenship <- div_paygap(d, x = "citizenship", x_ctrl = "Polish", team_sel = "*")
+
+x <- pg_citizenship$data %>%
+  group_by(team, grade) %>%
+  mutate(med_paygap = median(paygap)
+         )
+ggplot(data = x, mapping = aes(x = grade, y = med_paygap, colour = team)) + 
+  geom_hline(yintercept = 1,  color = "green", size = 50, alpha = 0.1) +
+  geom_point(aes(size = n_ctrl), alpha = 0.6) + 
+  geom_line(aes(x = grade, y = med_paygap), alpha = 0.6) + 
+  theme_wsj(title_family = "serif")+ scale_colour_wsj("colors6") +
+  ggtitle("The Pay-Ratios per Nationality Group") +
+  theme(text = element_text(size = 8)) +
+  theme(legend.text = element_text(size = 9)) 
+```
+
+## Pay Fairness for Age
+
+Age is a continuous variable unlike gender or nationality (where we have clear categories). In order to get categories here, look at all people of the same grade and job and then order them according to age. Then we split them into two groups: a group of younger people and a group of older people. The younger people are our reference.
+
+The generated data has no built-in bias with respect to age (older people earn more). Therefore we can expect the pay-ratios to be around 1.
+
+```{r, fig.cap = "The pay-ratios for grade per team for age. The relatively younger people are our control group. Note that a bias was built into the data. $n\\_crl$ is the number of staff in the control group (younger employees)"}
+pg <- div_paygap(d, x = "age", ctrl_var = "gender", team_sel = "*")
+
+x <- pg$data %>%
+  group_by(team, grade) %>%
+  mutate(med_paygap = median(paygap, na.rm = TRUE)
+         )
+ggplot(data = x, mapping = aes(x = grade, y = med_paygap, colour = team)) + 
+  geom_hline(yintercept = 1,  color = "green", size = 50, alpha = 0.1) +
+  geom_point(aes(size = n_ctrl), alpha = 0.6) + 
+  geom_line(aes(x = grade, y = med_paygap), alpha = 0.6) + 
+  theme_wsj(title_family = "serif")+ scale_colour_wsj("colors6") +
+  ggtitle("The Pay-Ratios per Age Group") +
+  theme(text = element_text(size = 8)) +
+  theme(legend.text = element_text(size = 9))
+```
+
+Note that in this particular example, the absence of innate bias is only clearly visible in the larger groups (grade 0), where we have more people. The higher grades, and hence smaller groups seem to show a picture where younger people are underpaid.
+
+This means that even if the team-leader is not biased, that randomly salary differences might appear that are not due to bias. One might in this particular case be most inclined to address the paygaps for the higher grades, where younger people seem to be underpaid.
+
+## Other Pay Fairness Measures
+
+Other variables are possible, here is a suggestion of some variables that should not show a bias:
+
+  - tenure in the company
+  - tenure in the team
+  - university name
+  - experience (will largely lead to the same conclusions as age)
+  - military service
+  - race or ethinicity
+  - religion
+  - etc.
+  
+  
+Other variables, might or might not show a bias, depending on your approach:
+
+ - tenure in the grade
+ - performance rating
+ - diploma level
+
+
+## Other notes on payment
+
+- Fixed or variable pay? --- both are possible, so is total pay. The latter is maybe the bet measure.
+- Overtime? --- If pay is related to number of hours worked, then the analysis should be done based on the pay per hour.
